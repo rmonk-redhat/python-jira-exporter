@@ -1,0 +1,48 @@
+<html><head><title>{{key}} - {{summary}}</title></head><body>
+<h1>{{key}} - {{summary}}</h1>
+<a href="index.html">Back to index</a>
+
+<dl>
+<dt>Project</dt>
+<dd>{{project}}</dd>
+<dt>Creator</dt>
+<dd>{{creator}}</dd>
+<dt>Status</dt>
+<dd>{{status}}</dd>
+<dt>type</dt>
+<dd>{{issuetype}}</dd>
+<dt>Created Date</dt>
+<dd>{{createddate}}</dd>
+<dt>Updated Date</dt>
+<dd>{{updateddate}}</dd>
+<dt>Resolution Date</dt>
+<dd>{{resolutiondate}}</dd>
+</dl>
+
+<h2>Description</h2>
+<blockquote style="white-space: pre-wrap;">
+{{ description }}
+</blockquote>
+
+<h2>Comments</h2>
+<ol>
+{% for comment in comments %}
+<li>{{comment.author}} - {{comment.created}}
+	<ul>
+		<li style="white-space: pre-wrap;">{{comment.body}}</li>
+	</ul>
+{% endfor %}
+</ol>
+
+<h2>Attachments</h2>
+<ol>
+{% for attachment in attachments %}
+<li><a href="{{key}}/{{ attachment }}-{{attachments[attachment]}}">{{attachments[attachment]}}</a></li>
+{% endfor%}
+</ol>
+
+<h2>All data</h2>
+<pre>
+{{ raw }}
+</pre>
+</body></html>

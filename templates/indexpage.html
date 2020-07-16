@@ -1,0 +1,11 @@
+<html><head><title>{{key}} - {{name}}</title></head><body>
+	<h1>{{name}} ({{key}})</h1>
+	{%if backlink%}{{backlink|safe}}{%endif%}
+	<ul>
+	{% for item in itemlist %}
+		<li><a href="{{item.url}}">{{item.label}}</a>
+		</li>
+	{%endfor%}
+	</ul>
+</body>
+</html>

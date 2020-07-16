@@ -6,59 +6,26 @@ import json
 import shutil
 import os
 from pathlib import Path
-from pprint import pprint
-import json2html
+from pprint import pprint, pformat
+from json2html import *
 from jinja2 import Template
-
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+import datetime
+from collections import defaultdict
 
 EXPORT_FOLDER = Path("export")
 MAX_ISSUES = 5
 PROJECT_MATCH = ['AF30'] # Projects to include, empty for all
-SAMPLE_PAGE = Template("""
-<html><head><title>{{key}} - {{name}}</title></head><body>
-<h1>{{project}} - {{key}} - {{name}}</h1>
-
-<h3>{{summary}}</h3>
-
-<dl>
-<dt>Creator</dt>
-<dd>{{creator}}</dd>
-<dt>Status</dt>
-<dd>{{status}}</dd>
-<dt>type</dt>
-<dd>{{issuetype}}</dd>
-<dt>Created Date</dt>
-<dd>{{createddate}}</dd>
-<dt>Resolution Date</dt>
-<dd>{{resolutiondate}}</dd>
-</dl>
-
-<h2>Description</h2>
-<blockquote>
-{{ description }}
-</blockquote>
-
-<h2>Comments</h2>
-<ol>
-{% for comment in comments %}
-<li> {{comment}} </li>
-{% endfor %}
-</ol>
-
-<h2>Attachments</h2>
-{% for attachment in attachments %}
-{{ attachment }}
-{% endfor%}
-
-<h2>All data</h2>
-
-{{ raw }}
-
-</body></html>
-""")
 
 
-
+env = Environment(
+    loader=FileSystemLoader('templates'),
+    autoescape=select_autoescape(
+    default_for_string=True,
+    default=True)
+)
+TEMPLATE = env.get_template('template-page.html')
+INDEX_TEMPLATE = env.get_template('indexpage.html')
 shutil.rmtree(EXPORT_FOLDER, ignore_errors=True)
 os.mkdir(EXPORT_FOLDER)
 
@@ -90,7 +57,7 @@ for project in projects:
 	else:
 		print("Fetching", project.key)
 	try:
-		project_dict[project] = {'name': project.name, 'issues':{}}
+		project_dict[project] = {'name': project.name, 'issues_len':0}
 		
 		
 
@@ -98,22 +65,82 @@ for project in projects:
 		this_project = EXPORT_FOLDER / str(project)
 		os.mkdir(this_project)
 		issue_dict = {}
-		for issue in jira_cursor.search_issues('project={}'.format(project,MAX_ISSUES), maxResults=False):
-			issue_dict[issue.key] = issue.name
+		
+		for issue in jira_cursor.search_issues('project={}'.format(project), maxResults=False):
+			#pprint(issue.raw)
 			print("\n***{}".format(issue.key))
-			for field in issue.raw['fields']:
-				if issue.raw['fields'][field]:
-					pprint((field, issue.raw['fields'][field]))
-			
+			issue_dict[issue.key] = {'summary':        issue.fields.summary,
+									 'key':            issue.key,
+									 'creator':        "{} <{}>".format(issue.fields.creator.displayName, issue.fields.creator.emailAddress),
+									 'project':        "{} ({})".format(issue.fields.project.name, issue.fields.project.key),
+									 'status':         issue.fields.status.name,
+									 'issuetype':      issue.fields.issuetype.name,
+									 'createddate':    issue.fields.created,
+									 'updateddate':    issue.fields.created,
+									 'resolutiondate': "{} {}".format(issue.fields.resolution, issue.fields.resolutiondate),
+									 'description':    issue.fields.description, # remember to htmlify this
+									 'comments':       [],
+									 'projectkey':     str(project),
+									 'attachments':    {},
+									 'raw':            pformat(issue.raw)}
+			# for field in issue.raw['fields']:
+			# 	if issue.raw['fields'][field]:
+			# 		pprint((field, issue.raw['fields'][field]))
+		
+		for issue in jira_cursor.search_issues('project={}'.format(project), expand='comment', fields='comment', maxResults=False):
+			#pprint(issue.raw)
+			for comment in issue.fields.comment.comments:
+				issue_dict[issue.key]['comments'].append({'author':  "{} <{}>".format(comment.author.displayName, comment.author.emailAddress),
+				                                          'body':    comment.body,
+				                                          'created': comment.updated,
+				                                          })
 
+
+
+		for issue in jira_cursor.search_issues('project={}&attachments is not empty'.format(project), fields='attachments', maxResults=False):
+			os.mkdir(this_project/str(issue.key))
+			#pprint(issue.raw['fields'])
 			for attachment in issue.fields.attachment:
-			    print("Name: '{filename}', size: {size}".format(
-			        filename=attachment.filename, size=attachment.size))
-			    # to read content use `get` method:
-			    print("Content: '{}'".format(attachment.get()))
-			# maxResults evaluates as False, it will try to get all issues in batches.
+				print("Name: '{filename}', size: {size}".format(
+					filename=attachment.filename, size=attachment.size))
+				issue_dict[issue.key]['attachments'][attachment.id] = attachment.filename
+				with open(this_project/str(issue.key)/"{}-{}".format(attachment.id, attachment.filename), "wb") as attachmentfile:
+					attachmentfile.write(attachment.get())
+				# to read content use `get` method:
+
+				#print("Content: '{}'".format(attachment.get()))
+			
+			#maxResults evaluates as False, it will try to get all issues in batches.
 			#pprint(dir(issue))
 			#pprint(issue.raw)
+		for issue in issue_dict:
+			with open(this_project/"{}.html".format(issue), "w") as issuehtml:
+				issuehtml.write(TEMPLATE.render(issue_dict[issue]))
+		issuelist = []
+		for issue in issue_dict:
+			issuelist.append({'url':"{}.html".format(issue),
+			                 'label': "{}: {}".format(issue, issue_dict[issue]['summary'])})
+		with open(this_project/"index.html", "w") as index:
+				index.write(INDEX_TEMPLATE.render({'key': project.key,
+				                                 'name': project.name,
+				                                 'itemlist': issuelist,
+				                                 'backlink': "<a href='../index.html'>List of Projects</a>"
+
+				                                 }))
+		project_dict[project]['issues_len'] = len(issue_dict)
+	
 	except jira.exceptions.JIRAError as e:
 		print("Problem fetching issues for {}".format(project))
 		print(e)
+project_list = []
+for project in project_dict:
+	project_list.append({'url': "{}/index.html".format(project),
+		                'label': "{}: {} ({} issues)".format(project, project_dict[project]['name'], project_dict[project]['issues_len'])})
+
+with open(EXPORT_FOLDER/"index.html", "w") as index:
+			index.write(INDEX_TEMPLATE.render({'key': options['server'],
+				                                'name': 'All Proejcts exported on {}'.format(datetime.datetime.now()),
+				                                'itemlist': project_list,
+				                                'backlink': None
+
+				                                }))
