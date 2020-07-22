@@ -13,6 +13,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 import datetime
 from collections import defaultdict
 import tqdm
+import re
 
 EXPORT_FOLDER = Path("export")
 MAX_ISSUES = 5
@@ -68,7 +69,7 @@ with tqdm.tqdm(projects, desc="projects") as tqdmproject:
 			os.mkdir(this_project)
 			issue_dict = {}
 			
-			for issue in tqdm.tqdm(jira_cursor.search_issues('project={}'.format(project), maxResults=False), desc="issues", leave=False):
+			for issue in tqdm.tqdm(jira_cursor.search_issues('project={}'.format(project), maxResults=False, fields='*all', expand='renderedFields,changelog'), desc="issues", leave=False):
 				#pprint(issue.raw)
 				#print("\n***{}".format(issue.key))
 				creatorname = issue.fields.creator.displayName
@@ -87,8 +88,9 @@ with tqdm.tqdm(projects, desc="projects") as tqdmproject:
 										'createddate':    issue.fields.created,
 										'updateddate':    issue.fields.created,
 										'resolutiondate': "{} {}".format(issue.fields.resolution, issue.fields.resolutiondate),
-										'description':    issue.fields.description, # remember to htmlify this
+										'description':    issue.renderedFields.description, # remember to htmlify this
 										'comments':       [],
+										'changelog':      issue.changelog.histories,
 										'projectkey':     str(project),
 										'attachments':    {},
 										'raw':            pformat(issue.raw)}
@@ -96,30 +98,32 @@ with tqdm.tqdm(projects, desc="projects") as tqdmproject:
 				# 	if issue.raw['fields'][field]:
 				# 		pprint((field, issue.raw['fields'][field]))
 			
-			for issue in tqdm.tqdm(jira_cursor.search_issues('project={}'.format(project), expand='comment', fields='comment', maxResults=False), desc='comments', leave=False):
+			for issue in tqdm.tqdm(jira_cursor.search_issues('project={}'.format(project), expand='comment,renderedFields', fields='comment', maxResults=False), desc='comments', leave=False):
 				#pprint(issue.raw)
-				for comment in issue.fields.comment.comments:
+				for comment in issue.renderedFields.comment.comments:
 					creatorname = comment.author.displayName
 
 					try:
 						creatoremail = comment.author.emailAddress
 					except AttributeError:
 						creatoremail = 'Unknown'
+					body=re.sub(r'/secure/attachment/[0-9]+/([0-9]+)_([^"]*)', r"{}/\1-\2".format(str(issue.key)), comment.body)
+
 					issue_dict[issue.key]['comments'].append({'author':  "{} <{}>".format(creatorname, creatoremail),
-				                                        	'body':    comment.body,
-				                                        	'created': comment.updated,
+				                                        	'body':      body  ,
+				                                        	'created':   comment.updated,
 				                                        	})
 
 
 
-			for issue in tqdm.tqdm(jira_cursor.search_issues('project={}&attachments is not empty'.format(project), fields='attachments', maxResults=False), desc='attachments', leave=False):
+			for issue in tqdm.tqdm(jira_cursor.search_issues('project={}&attachments is not empty'.format(project), expand='renderedFields', fields='attachments', maxResults=False), desc='attachments', leave=False):
 				os.mkdir(this_project/str(issue.key))
 				#pprint(issue.raw['fields'])
 				for attachment in issue.fields.attachment:
 					#print("Name: '{filename}', size: {size}".format(
 					#	filename=attachment.filename, size=attachment.size))
 					issue_dict[issue.key]['attachments'][attachment.id] = attachment.filename
-					with open(this_project/str(issue.key)/"{}-{}".format(attachment.id, attachment.filename), "wb") as attachmentfile:
+					with open(this_project/str(issue.key)/"{}-{}".format(attachment.id, re.sub(r' ','+',attachment.filename)), "wb") as attachmentfile:
 						attachmentfile.write(attachment.get())
 					# to read content use `get` method:
 

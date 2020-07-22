@@ -20,8 +20,8 @@
 </dl>
 
 <h2>Description</h2>
-<blockquote style="white-space: pre-wrap;">
-{{ description }}
+<blockquote >
+{{ description | safe}}
 </blockquote>
 
 <h2>Comments</h2>
@@ -29,7 +29,7 @@
 {% for comment in comments %}
 <li>{{comment.author}} - {{comment.created}}
 	<ul>
-		<li style="white-space: pre-wrap;">{{comment.body}}</li>
+		<li >{{comment.body|safe}}</li>
 	</ul>
 {% endfor %}
 </ol>
@@ -37,10 +37,26 @@
 <h2>Attachments</h2>
 <ol>
 {% for attachment in attachments %}
-<li><a href="{{key}}/{{ attachment }}-{{attachments[attachment]}}">{{attachments[attachment]}}</a></li>
+<li><a href="{{key}}/{{ attachment }}-{{attachments[attachment]}}">{{attachments[attachment]}}</a>
+</li>
 {% endfor%}
 </ol>
 
+<h2>Changelog</h2>
+<ol>
+{% for item in changelog%}
+<li>{{item.author}} {{item.created}}</li>
+<ul>
+	{%for field in item.items%}
+	<li>{{field.field}}</li>
+<ul>
+	<li>From: {{field.from}} <blockquote style='style="white-space: pre-wrap;"'>{{field.fromString}}</blockquote></li>
+	<li>To: {{field.to}} <blockquote style='style="white-space: pre-wrap;"'>{{field.toString}}</blockquote></li>
+</ul>
+	{%endfor%}
+</ul>
+{%endfor%}
+</ol>
 <h2>All data</h2>
 <pre>
 {{ raw }}
