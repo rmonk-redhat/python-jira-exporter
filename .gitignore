@@ -1,3 +1,4 @@
 .direnv/
 export/
 secret.json
+env/
